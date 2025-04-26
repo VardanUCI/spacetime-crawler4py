@@ -108,3 +108,4 @@ venv.bak/
 
 *.full.py
 *.shelvedataReport.json
+dataReport.json
