@@ -1,29 +1,120 @@
 import re
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
+from bs4 import BeautifulSoup
+import json
+import os
+
+stopWords = set()
+with open("StopWordsList.txt", "r") as f:
+    stopWords = set(word.strip().lower() for word in f.readlines())
+
+dataReport = {
+    "urls_are_unique": set(),
+    "longest_one": {"url": "", "word_count": 0},
+    "freq_word": {},
+    "sub_domains": {}
+}
+
+def saveData():
+    i = 4
+    with open("dataReport.json", "w") as f:
+        json.dump({
+            "urls_are_unique": list(dataReport["urls_are_unique"]),
+            "longest_one": dataReport["longest_one"],
+            "freq_word": dataReport["freq_word"],
+            "sub_domains": dataReport["sub_domains"]
+        }, f, indent=i)
+
 
 def scraper(url, resp):
+    parsed = urlparse(url)
+    urlWithoutFragment = parsed._replace(fragment='').geturl()
+    dataReport["urls_are_unique"].add(urlWithoutFragment)  # Fixed key
+
+    if resp.status == 200 and resp.raw_response and resp.raw_response.content:
+        objSoup = BeautifulSoup(resp.raw_response.content, "html.parser")
+        text = objSoup.get_text(strip=True)
+        words = text.split()
+        word_count = len(words)
+
+        if word_count > dataReport["longest_one"]["word_count"]:  # Fixed key
+            dataReport["longest_one"] = {"url": url, "word_count": word_count}
+
+        for word in words:
+            word = word.lower()
+            if word.isalpha() and word not in stopWords:  # Fixed variable name
+                dataReport["freq_word"][word] = dataReport["freq_word"].get(word, 0) + 1  # Fixed key
+
+        domain = parsed.netloc.lower()
+        if domain.endswith(".uci.edu"):
+            subdomain = domain
+            dataReport["sub_domains"][subdomain] = dataReport["sub_domains"].get(subdomain, 0) + 1  # Fixed key
+
     links = extract_next_links(url, resp)
-    return [link for link in links if is_valid(link)]
+    validLinks = []
+    for link in links:
+        if is_valid(link):
+            validLinks.append(link)
+
+    saveData()
+    return validLinks
+
 
 def extract_next_links(url, resp):
-    # Implementation required.
-    # url: the URL that was used to get the page
-    # resp.url: the actual url of the page
-    # resp.status: the status code returned by the server. 200 is OK, you got the page. Other numbers mean that there was some kind of problem.
-    # resp.error: when status is not 200, you can check the error here, if needed.
-    # resp.raw_response: this is where the page actually is. More specifically, the raw_response has two parts:
-    #         resp.raw_response.url: the url, again
-    #         resp.raw_response.content: the content of the page!
-    # Return a list with the hyperlinks (as strings) scrapped from resp.raw_response.content
-    return list()
+    if resp.status != 200 or not resp.raw_response or not resp.raw_response.content:
+        return list()
+
+    if len(resp.raw_response.content) == 0:
+        return list()
+
+    if len(resp.raw_response.content) > 1000000:
+        objSoup = BeautifulSoup(resp.raw_response.content, "html.parser")
+        text = objSoup.get_text(strip=True)
+        if len(text.split()) < 50:
+            return list()
+
+    objSoup = BeautifulSoup(resp.raw_response.content, "html.parser")
+    text = objSoup.get_text(strip=True)
+    if len(text.split()) < 10:
+        return list()
+
+    list = []
+    for charTag in objSoup.find_all("a", href=True):
+        atr_href = charTag["href"].strip()
+        if atr_href:
+            absUrl = urljoin(url, atr_href)
+            list.append(absUrl)
+    return list
+
 
 def is_valid(url):
-    # Decide whether to crawl this url or not. 
-    # If you decide to crawl it, return True; otherwise return False.
-    # There are already some conditions that return False.
     try:
         parsed = urlparse(url)
+        url = parsed._replace(fragment='').geturl()
+        parsed = urlparse(url)
+
         if parsed.scheme not in set(["http", "https"]):
+            return False
+
+        domains = [
+            "ics.uci.edu",
+            "cs.uci.edu",
+            "informatics.uci.edu",
+            "stat.uci.edu",
+            "today.uci.edu"
+        ]
+        domain = parsed.netloc.lower()
+        if not any(domain == allowed or domain.endswith("." + allowed) for allowed in domains):
+            return False
+
+        if domain == "today.uci.edu" or domain.endswith(".today.uci.edu"):
+            if not parsed.path.startswith("/department/information_computer_sciences"):
+                return False
+
+        if re.search(r"(login|signin|logout|auth|calendar|event|date|page/[0-9]+|[0-9]+/)", parsed.path.lower()):
+            return False
+
+        if parsed.query and re.search(r"(reply.*|page=[0-9]+|sid=)", parsed.query.lower()):
             return False
         return not re.match(
             r".*\.(css|js|bmp|gif|jpe?g|ico"
@@ -36,5 +127,5 @@ def is_valid(url):
             + r"|rm|smil|wmv|swf|wma|zip|rar|gz)$", parsed.path.lower())
 
     except TypeError:
-        print ("TypeError for ", parsed)
+        print("TypeError for ", parsed)
         raise
