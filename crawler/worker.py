@@ -1,5 +1,4 @@
 from threading import Thread
-
 from inspect import getsource
 from utils.download import download
 from utils import get_logger
@@ -21,12 +20,17 @@ class Worker(Thread):
             if not tbd_url:
                 self.logger.info("Frontier is empty. Stopping Crawler.")
                 break
-            resp = download(tbd_url, self.config, self.logger)
-            self.logger.info(
-                f"Downloaded {tbd_url}, status <{resp.status}>, "
-                f"using cache {self.config.cache_server}.")
-            scraped_urls = scraper.scraper(tbd_url, resp)
-            for scraped_url in scraped_urls:
-                self.frontier.add_url(scraped_url)
-            self.frontier.mark_url_complete(tbd_url)
+            print(f"Validating URL before download: {tbd_url}")
+            if scraper.is_valid(tbd_url):
+                resp = download(tbd_url, self.config, self.logger)
+                self.logger.info(
+                    f"Downloaded {tbd_url}, status <{resp.status}>, "
+                    f"using cache {self.config.cache_server}.")
+                scraped_urls = scraper.scraper(tbd_url, resp)
+                for scraped_url in scraped_urls:
+                    self.frontier.add_url(scraped_url)
+                self.frontier.mark_url_complete(tbd_url)
+            else:
+                print(f"URL rejected by is_valid: {tbd_url}")
+                self.frontier.mark_url_complete(tbd_url)
             time.sleep(self.config.time_delay)

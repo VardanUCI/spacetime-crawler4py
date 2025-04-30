@@ -8,6 +8,7 @@ from scraper import is_valid
 class Frontier(object):
     def __init__(self, config, restart):
         print("Loading seed URLs:", config.seed_urls)
+        print(f"Restart flag: {restart}")
         self.logger = get_logger("FRONTIER")
         self.config = config
         self.to_be_downloaded = list()
@@ -22,9 +23,12 @@ class Frontier(object):
             os.remove(self.config.save_file)
         self.save = shelve.open(self.config.save_file)
         if restart:
+            print("Restart is True, adding seed URLs")
             for url in self.config.seed_urls:
+                print(f"Calling add_url for: {url}")
                 self.add_url(url)
         else:
+            print("Restart is False, parsing save file")
             self._parse_save_file()
             if not self.save:
                 for url in self.config.seed_urls:
@@ -43,18 +47,24 @@ class Frontier(object):
 
     def get_tbd_url(self):
         try:
-            return self.to_be_downloaded.pop()
+            url = self.to_be_downloaded.pop()
+            print(f"Returning URL from to_be_downloaded: {url}")
+            return url
         except IndexError:
+            print("to_be_downloaded is empty")
             return None
 
     def add_url(self, url):
+        print(f"Inside add_url with: {url}")
         url = normalize(url)
+        print(f"Normalized URL: {url}")
         urlhash = get_urlhash(url)
+        print(f"URL hash: {urlhash}")
         if urlhash not in self.save:
             self.save[urlhash] = (url, False)
             self.save.sync()
             self.to_be_downloaded.append(url)
-            print(f"URL that to_be_downloaded: {url}")
+            print(f"URL added to to_be_downloaded: {url}")
     
     def mark_url_complete(self, url):
         urlhash = get_urlhash(url)
