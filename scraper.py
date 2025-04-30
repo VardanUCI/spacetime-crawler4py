@@ -62,6 +62,7 @@ def scraper(url, resp):
 
 
 def extract_next_links(url, resp):
+    print(f"Extracting links from {url}, status: {resp.status}")
     if resp.status != 200 or not resp.raw_response or not resp.raw_response.content:
         return list()
 
@@ -90,6 +91,7 @@ def extract_next_links(url, resp):
 
 def is_valid(url):
     try:
+        print(f"Checking URL: {url}")
         parsed = urlparse(url)
         url = parsed._replace(fragment='').geturl()
         parsed = urlparse(url)
