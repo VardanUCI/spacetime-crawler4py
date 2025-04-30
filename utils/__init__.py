@@ -16,6 +16,7 @@ def get_logger(name, filename=None):
        "%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     fh.setFormatter(formatter)
     ch.setFormatter(formatter)
+    # add the handlers to the logger
     logger.addHandler(fh)
     logger.addHandler(ch)
     return logger
@@ -23,23 +24,12 @@ def get_logger(name, filename=None):
 
 def get_urlhash(url):
     parsed = urlparse(url)
+    # everything other than scheme.
     return sha256(
         f"{parsed.netloc}/{parsed.path}/{parsed.params}/"
         f"{parsed.query}/{parsed.fragment}".encode("utf-8")).hexdigest()
 
 def normalize(url):
-    parsed = urlparse.urlparse(url)
-    parsed = parsed._replace(fragment='')
-    query_params = urlparse.parse_qs(parsed.query)
-    if 'timeline' in parsed.path and 'from' in query_params:
-        query_params.pop('from', None)
-    
-    new_query = urlparse.urlencode(query_params, doseq=True)
-    parsed = parsed._replace(query=new_query)
-    
-    normalized = urlparse.urlunparse(parsed)
-    
-    if not normalized.endswith('/') and '.' not in normalized.split('/')[-1]:
-        normalized += '/'
-    
-    return normalized
+    if url.endswith("/"):
+        return url.rstrip("/")
+    return url

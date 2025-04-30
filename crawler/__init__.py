@@ -3,8 +3,7 @@ from crawler.frontier import Frontier
 from crawler.worker import Worker
 
 class Crawler(object):
-    def __init__(self, config, restart, frontier_factory=Frontier, worker_factory=Worker):
-        print("Loading seed URLs:", config.seed_urls)
+    def init(self, config, restart, frontier_factory=Frontier, worker_factory=Worker):
         self.config = config
         self.logger = get_logger("CRAWLER")
         self.frontier = frontier_factory(config, restart)

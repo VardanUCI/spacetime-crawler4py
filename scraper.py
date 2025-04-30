@@ -1,12 +1,15 @@
-import re
-from urllib.parse import urlparse, urljoin
+import re, json, os
+from urllib.parse import urlparse, urljoin, urldefrag
 from bs4 import BeautifulSoup
-import json
-import os
+
 
 stopWords = set()
-with open("StopWordsList.txt", "r") as f:
-    stopWords = set(word.strip().lower() for word in f.readlines())
+try:
+    with open("stopwords.txt", "r", encoding="utf-8") as f:
+        stopWords = {line.strip().lower() for line in f if line.strip()}
+except FileNotFoundError:
+    pass
+
 
 dataReport = {
     "urls_are_unique": set(),
@@ -16,119 +19,92 @@ dataReport = {
 }
 
 def saveData():
-    i = 4
     with open("dataReport.json", "w") as f:
         json.dump({
             "urls_are_unique": list(dataReport["urls_are_unique"]),
             "longest_one": dataReport["longest_one"],
             "freq_word": dataReport["freq_word"],
             "sub_domains": dataReport["sub_domains"]
-        }, f, indent=i)
+        }, f, indent=4)
 
-
-def scraper(url, resp):
-    print(f"Scraping URL: {url}")
+def scraper(url: str, resp):
     parsed = urlparse(url)
-    urlWithoutFragment = parsed._replace(fragment='').geturl()
-    dataReport["urls_are_unique"].add(urlWithoutFragment)  # Fixed key
+    url_nf = parsed._replace(fragment="").geturl()
+    dataReport["urls_are_unique"].add(url_nf)
 
-    if resp.status == 200 and resp.raw_response and resp.raw_response.content:
-        objSoup = BeautifulSoup(resp.raw_response.content, "html.parser")
-        text = objSoup.get_text(strip=True)
+    if resp.status == 200 and getattr(resp.raw_response, "content", None):
+        soup = BeautifulSoup(resp.raw_response.content, "html.parser")
+        text = soup.get_text(separator=" ", strip=True)
         words = text.split()
-        word_count = len(words)
+        wc = len(words)
 
-        if word_count > dataReport["longest_one"]["word_count"]:  # Fixed key
-            dataReport["longest_one"] = {"url": url, "word_count": word_count}
+        if wc > dataReport["longest_one"]["word_count"]:
+            dataReport["longest_one"] = {"url": url_nf, "word_count": wc}
 
-        for word in words:
-            word = word.lower()
-            if word.isalpha() and word not in stopWords:  # Fixed variable name
-                dataReport["freq_word"][word] = dataReport["freq_word"].get(word, 0) + 1  # Fixed key
+        for w in words:
+            w = w.lower()
+            if w.isalpha() and w not in stopWords:
+                dataReport["freq_word"][w] = dataReport["freq_word"].get(w, 0) + 1
 
-        domain = parsed.netloc.lower()
-        if domain.endswith(".uci.edu"):
-            subdomain = domain
-            dataReport["sub_domains"][subdomain] = dataReport["sub_domains"].get(subdomain, 0) + 1  # Fixed key
+        dom = parsed.netloc.lower()
+        if dom.endswith(".uci.edu"):
+            dataReport["sub_domains"][dom] = dataReport["sub_domains"].get(dom, 0) + 1
 
     links = extract_next_links(url, resp)
-    validLinks = []
-    for link in links:
-        if is_valid(link):
-            validLinks.append(link)
-
+    valid = [l for l in links if is_valid(l)]
     saveData()
-    return validLinks
+    return valid
 
+def extract_next_links(url: str, resp) -> list:
+    urls = []
+    if resp.status != 200 or not getattr(resp.raw_response, "content", None):
+        return urls
 
-def extract_next_links(url, resp):
-    print(f"Extracting links from {url}, status: {resp.status}")
-    if resp.status != 200 or not resp.raw_response or not resp.raw_response.content:
-        return list()
+    content = resp.raw_response.content
+    if len(content) > 1_000_000:
+        soup = BeautifulSoup(content, "html.parser")
+        if len(soup.get_text().split()) < 50:
+            return urls
+    soup = BeautifulSoup(content, "html.parser")
+    if len(soup.get_text().split()) < 10:
+        return urls
 
-    if len(resp.raw_response.content) == 0:
-        return list()
+    for tag in soup.find_all("a", href=True):
+        href = tag["href"].strip()
+        if not href:
+            continue
+        absu = urljoin(resp.url, href)
+        clean, _ = urldefrag(absu)
+        urls.append(clean)
+    return urls
 
-    if len(resp.raw_response.content) > 1000000:
-        objSoup = BeautifulSoup(resp.raw_response.content, "html.parser")
-        text = objSoup.get_text(strip=True)
-        if len(text.split()) < 50:
-            return list()
-
-    objSoup = BeautifulSoup(resp.raw_response.content, "html.parser")
-    text = objSoup.get_text(strip=True)
-    if len(text.split()) < 10:
-        return list()
-
-    listLinks = []
-    for charTag in objSoup.find_all("a", href=True):
-        atr_href = charTag["href"].strip()
-        if atr_href:
-            absUrl = urljoin(url, atr_href)
-            listLinks.append(absUrl)
-    return listLinks
-
-
-def is_valid(url):
+def is_valid(url: str) -> bool:
     try:
-        print(f"Checking URL: {url}")
-        parsed = urlparse(url)
-        url = parsed._replace(fragment='').geturl()
-        parsed = urlparse(url)
-
-        if parsed.scheme not in set(["http", "https"]):
+        url, _ = urldefrag(url)
+        p = urlparse(url)
+        if p.scheme not in ("http", "https"):
             return False
 
-        domains = [
-            "ics.uci.edu",
-            "cs.uci.edu",
-            "informatics.uci.edu",
-            "stat.uci.edu",
-            "today.uci.edu"
-        ]
-        domain = parsed.netloc.lower()
-        if not any(domain == allowed or domain.endswith("." + allowed) for allowed in domains):
+        host, path = p.hostname or "", p.path or ""
+        domains = ("ics.uci.edu","cs.uci.edu","informatics.uci.edu","stat.uci.edu")
+        if not (any(host.endswith(d) for d in domains) or
+                (host == "today.uci.edu" and path.startswith("/department/information_computer_sciences"))):
+            return False
+        if re.search(r"(login|signin|logout|auth|calendar|event|date|\bpage/\d+|\d+/)", path.lower()):
+            return False
+        if p.query and re.search(r"(reply.*|page=\d+|sid=)", p.query.lower()):
             return False
 
-        if domain == "today.uci.edu" or domain.endswith(".today.uci.edu"):
-            if not parsed.path.startswith("/department/information_computer_sciences"):
-                return False
-
-        if re.search(r"(login|signin|logout|auth|calendar|event|date|page/[0-9]+|[0-9]+/)", parsed.path.lower()):
+        if re.search(
+            r"\.(css|js|bmp|gif|jpe?g|ico|png|tiff?|mid|mp2|mp3|mp4|wav|avi|mov|mpeg"
+            r"|ram|m4v|mkv|ogg|ogv|pdf|ps|eps|tex|ppt|pptx|doc|docx|xls|xlsx"
+            r"|data|dat|exe|bz2|tar|msi|bin|7z|psd|dmg|iso|epub|dll|cnf"
+            r"|tgz|sha1|thmx|mso|arff|rtf|jar|csv|rm|smil|wmv"
+            r"|swf|wma|zip|rar|gz)$",
+            path.lower()
+        ):
             return False
 
-        if parsed.query and re.search(r"(reply.*|page=[0-9]+|sid=)", parsed.query.lower()):
-            return False
-        return not re.match(
-            r".*\.(css|js|bmp|gif|jpe?g|ico"
-            + r"|png|tiff?|mid|mp2|mp3|mp4"
-            + r"|wav|avi|mov|mpeg|ram|m4v|mkv|ogg|ogv|pdf"
-            + r"|ps|eps|tex|ppt|pptx|doc|docx|xls|xlsx|names"
-            + r"|data|dat|exe|bz2|tar|msi|bin|7z|psd|dmg|iso"
-            + r"|epub|dll|cnf|tgz|sha1"
-            + r"|thmx|mso|arff|rtf|jar|csv"
-            + r"|rm|smil|wmv|swf|wma|zip|rar|gz)$", parsed.path.lower())
-
+        return True
     except TypeError:
-        print("TypeError for ", parsed)
-        raise
+        return False

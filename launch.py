@@ -7,13 +7,13 @@ from crawler import Crawler
 
 
 def main(config_file, restart):
-    print(f"Launch.py: restart flag is {restart}")
     cparser = ConfigParser()
     cparser.read(config_file)
     config = Config(cparser)
     config.cache_server = get_cache_server(config, restart)
     crawler = Crawler(config, restart)
     crawler.start()
+
 
 if __name__ == "__main__":
     parser = ArgumentParser()
