@@ -27,6 +27,11 @@ class Frontier(object):
         self.save = shelve.open(self.config.save_file)
         print(f"Contents of self.save after opening: {list(self.save.keys())}")
         if restart:
+            print("Restart is True, clearing self.save")
+            self.save.clear()  # Clear the shelve to ensure it's empty
+            self.save.sync()
+            print(f"Contents of self.save after clearing: {list(self.save.keys())}")
+        if restart:
             print("Restart is True, adding seed URLs")
             for url in self.config.seed_urls:
                 print(f"Calling add_url for: {url}")
