@@ -4,6 +4,7 @@ from crawler.worker import Worker
 
 class Crawler(object):
     def __init__(self, config, restart, frontier_factory=Frontier, worker_factory=Worker):
+        print("Loading seed URLs:", config.seed_urls)
         self.config = config
         self.logger = get_logger("CRAWLER")
         self.frontier = frontier_factory(config, restart)
