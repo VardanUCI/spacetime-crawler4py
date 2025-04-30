@@ -13,6 +13,8 @@ class Frontier(object):
         self.config = config
         self.to_be_downloaded = list()
         
+        print(f"Save file path: {self.config.save_file}")
+        print(f"Does save file exist? {os.path.exists(self.config.save_file)}")
         if not os.path.exists(self.config.save_file) and not restart:
             self.logger.info(
                 f"Did not find save file {self.config.save_file}, "
@@ -21,7 +23,9 @@ class Frontier(object):
             self.logger.info(
                 f"Found save file {self.config.save_file}, deleting it.")
             os.remove(self.config.save_file)
+            print("Save file deleted")
         self.save = shelve.open(self.config.save_file)
+        print(f"Contents of self.save after opening: {list(self.save.keys())}")
         if restart:
             print("Restart is True, adding seed URLs")
             for url in self.config.seed_urls:
@@ -60,6 +64,7 @@ class Frontier(object):
         print(f"Normalized URL: {url}")
         urlhash = get_urlhash(url)
         print(f"URL hash: {urlhash}")
+        print(f"Is URL hash in self.save? {urlhash in self.save}")
         if urlhash not in self.save:
             self.save[urlhash] = (url, False)
             self.save.sync()
