@@ -27,6 +27,7 @@ def saveData():
 
 
 def scraper(url, resp):
+    print(f"Scraping URL: {url}")
     parsed = urlparse(url)
     urlWithoutFragment = parsed._replace(fragment='').geturl()
     dataReport["urls_are_unique"].add(urlWithoutFragment)  # Fixed key
@@ -78,13 +79,13 @@ def extract_next_links(url, resp):
     if len(text.split()) < 10:
         return list()
 
-    list = []
+    listLinks = []
     for charTag in objSoup.find_all("a", href=True):
         atr_href = charTag["href"].strip()
         if atr_href:
             absUrl = urljoin(url, atr_href)
-            list.append(absUrl)
-    return list
+            listLinks.append(absUrl)
+    return listLinks
 
 
 def is_valid(url):
