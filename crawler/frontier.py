@@ -9,6 +9,7 @@ from scraper import is_valid
 
 class Frontier(object):
     def __init__(self, config, restart):
+        print("Loading seed URLs:", config.seed_urls)
         self.logger = get_logger("FRONTIER")
         self.config = config
         self.to_be_downloaded = list()
